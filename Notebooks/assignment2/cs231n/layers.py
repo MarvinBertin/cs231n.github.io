@@ -395,7 +395,7 @@ def conv_forward_naive(x, w, b, conv_param):
 
   The input consists of N data points, each with C channels, height H and width
   W. We convolve each input with F different filters, where each filter spans
-  all C channels and has height HH and width HH.
+  all C channels and has height HH and width WW.
 
   Input:
   - x: Input data of shape (N, C, H, W)
@@ -417,7 +417,28 @@ def conv_forward_naive(x, w, b, conv_param):
   # TODO: Implement the convolutional forward pass.                           #
   # Hint: you can use the function np.pad for padding.                        #
   #############################################################################
-  pass
+  N, C, H, W = x.shape
+  F, C, HH, WW = w.shape
+  stride = conv_param['stride']
+  pad = conv_param['pad']
+
+  # Add padding to each image
+  x_pad = np.pad(x, ((0,), (0,), (pad,), (pad,)), 'constant')
+  # output size
+  out_H = 1 + (H + 2 * pad - HH) / stride
+  out_W = 1 + (W + 2 * pad - WW) / stride
+
+
+  out = np.zeros((N, F, out_H, out_W))
+
+  for n in xrange(N):
+    for f in xrange(F):
+      for h in xrange(out_H):
+        for w in xrange(out_W):
+          h_step = h * stride
+          w_step = w * stride
+          out[n,f,h,w] = np.sum(x_pad[n, :, h_step: h_step+HH, w_step: w_step+WW] * w[f, :]) + b[f]
+
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
@@ -442,7 +463,53 @@ def conv_backward_naive(dout, cache):
   #############################################################################
   # TODO: Implement the convolutional backward pass.                          #
   #############################################################################
-  pass
+  x, w, b, conv_param = cache
+
+  N, C, H, W = x.shape
+  F, C, HH, WW = w.shape
+  N, F, out_H, out_W = dout.shape
+
+  stride = conv_param['stride']
+  pad = conv_param['pad']
+
+  # Add padding to each image
+  x_pad = np.pad(x, ((0,), (0,), (pad,), (pad,)), 'constant')
+
+  dw = np.zeros((F, C, HH, WW))
+  for f in xrange(F):
+    for c in xrange(C):
+        for i in xrange(HH):
+            for j in xrange(WW):
+                sub_xpad = x_pad[:, c, i : i+out_H*S : S, j : j+out_W*S : S]
+                dw[f, c, i, j] = np.sum(dout[:, f, :, :] * sub_xpad)
+
+
+  # For db
+  db = np.zeros((F))
+  for f in xrange(F):
+      db[f] = np.sum(dout[:, f, :, :])
+
+  # For dx
+  dx = np.zeros((N, C, H, W))
+  for n in range(N):
+      for i in range(H):
+          for j in range(W):
+              for f in range(F):
+                  for h in range(out_H):
+                      for w in range(out_W):
+                          mask1 = np.zeros_like(w[f, :, :, :])
+                          mask2 = np.zeros_like(w[f, :, :, :])
+
+                          h_step = i + pad - h * stride
+                          w_step = j + pad - w * stride
+
+                          if (h_step) < HH and (h_step) >= 0:
+                              mask1[:, h_step, :] = 1.0
+                          if (w_step) < WW and (w_step) >= 0:
+                              mask2[:, :, w_step] = 1.0
+
+                          w_masked = np.sum(w[f, :, :, :] * mask1 * mask2, axis=(1, 2))
+                          dx[n, :, i, j] += dout[n, f, h, w] * w_masked
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
